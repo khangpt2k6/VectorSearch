@@ -101,14 +101,23 @@ private:
 
     // pick at most m neighbors out of candidates using the HNSW heuristic: keep
     // a candidate only if it is closer to the new node than to anything already
-    // kept, which spreads links out instead of clustering them.
+    // kept, which spreads links out instead of clustering them. candidates carry
+    // their distance to the query node in .first.
     std::vector<std::uint32_t> select_neighbors(
-        std::uint32_t query_idx,
         std::vector<std::pair<float, std::uint32_t>> candidates,
         std::size_t m) const;
 
-    // wire one node into the graph. used by both the single and parallel paths.
-    void link_node(std::uint32_t new_idx, int node_top_level);
+    // wire one node (already stored in nodes_/data_) into the graph.
+    void link_node(std::uint32_t new_idx);
+
+    // link accessors that take the per-node lock when a parallel build is in
+    // flight, and skip locking otherwise.
+    std::vector<std::uint32_t> read_links(std::uint32_t idx, int layer) const;
+    void store_links(std::uint32_t idx, int layer,
+                     const std::vector<std::uint32_t>& links);
+    // add `to` to `from`'s layer links, pruning back to cap if it overflows.
+    void connect(std::uint32_t from, int layer, std::uint32_t to,
+                 std::size_t cap);
 
     std::size_t dim_;
     Metric metric_;
@@ -122,9 +131,9 @@ private:
     int max_level_ = -1;
 
     std::mt19937_64 rng_;
+    bool concurrent_ = false;  // true only while add_parallel is running
     // per-node locks for the parallel build; index with internal_idx.
     mutable std::vector<std::mutex> link_locks_;
-    std::mutex global_lock_;  // guards entry_point_ / max_level_ / appends
 };
 
 }  // namespace vectorsearch
