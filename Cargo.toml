@@ -1,0 +1,14 @@
+[package]
+name = "vectorsearch"
+version = "0.1.0"
+edition = "2021"
+description = "A vector search engine written in Rust, built from scratch"
+license = "MIT"
+repository = "https://github.com/khangpt2k6/VectorSearch"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

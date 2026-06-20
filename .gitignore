@@ -1,0 +1,16 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock
+
+# Benchmark datasets (downloaded, large)
+/datasets
+*.hdf5
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local working notes (not project deliverables)
+docs/superpowers/
