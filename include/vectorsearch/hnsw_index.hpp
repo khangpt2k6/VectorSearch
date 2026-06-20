@@ -37,7 +37,8 @@ public:
         std::uint64_t seed = 42;
     };
 
-    HnswIndex(std::size_t dim, Metric metric, Params params = {});
+    HnswIndex(std::size_t dim, Metric metric);
+    HnswIndex(std::size_t dim, Metric metric, Params params);
 
     void add(std::uint64_t id, const float* vector, std::size_t dim) override;
     std::vector<Neighbor> search(const float* query, std::size_t dim,
