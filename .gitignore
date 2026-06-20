@@ -1,7 +1,12 @@
-# Rust
-/target
-**/*.rs.bk
-Cargo.lock
+# Build output
+/build
+/cmake-build-*
+*.o
+*.obj
+*.a
+*.lib
+*.exe
+*.out
 
 # Benchmark datasets (downloaded, large)
 /datasets

@@ -5,11 +5,11 @@ working, testable state. Check items off as they land.
 
 ## Phase 0 - Foundation (done)
 
-- [x] Cargo project scaffolding
+- [x] CMake project scaffolding (C++17)
 - [x] Distance metrics: squared L2, cosine, dot product
-- [x] `Index` trait (add, search, len)
+- [x] `Index` interface (add, search, size)
 - [x] Flat / brute-force index (exact, used as the recall ground truth)
-- [x] Unit + integration tests
+- [x] Zero-dependency test suite wired into CTest
 
 ## Phase 1 - HNSW index (the core of the project)
 
@@ -18,7 +18,7 @@ working, testable state. Check items off as they land.
 - [ ] Query: layer descent + ef-search beam
 - [ ] Tunable params: `M`, `ef_construction`, `ef_search`
 - [ ] Correctness test: recall@10 vs the flat index on random data
-- [ ] Multi-threaded build (rayon)
+- [ ] Multi-threaded build (std::thread / OpenMP)
 
 ## Phase 2 - Persistence
 
@@ -49,7 +49,7 @@ working, testable state. Check items off as they land.
 
 ## Stretch
 
-- [ ] SIMD distance kernels (`std::simd` or `wide`)
+- [ ] SIMD distance kernels (AVX2 / intrinsics)
 - [ ] IVF index as an alternative to HNSW
 - [ ] gRPC API
 
