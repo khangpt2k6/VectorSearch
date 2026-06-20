@@ -44,3 +44,8 @@ add_executable(test_hnsw tests/test_hnsw.cpp)
 target_link_libraries(test_hnsw PRIVATE vectorsearch)
 target_include_directories(test_hnsw PRIVATE tests)
 add_test(NAME hnsw COMMAND test_hnsw)
+
+add_executable(test_recall tests/test_recall.cpp)
+target_link_libraries(test_recall PRIVATE vectorsearch)
+target_include_directories(test_recall PRIVATE tests)
+add_test(NAME recall COMMAND test_recall)
