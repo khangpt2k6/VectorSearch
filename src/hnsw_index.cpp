@@ -285,25 +285,43 @@ void HnswIndex::add_parallel(const std::uint64_t* ids, const float* vectors,
 
 std::vector<Neighbor> HnswIndex::search(const float* query, std::size_t dim,
                                         std::size_t k) const {
-    // temporary exact baseline so the index is usable and testable. the query PR
-    // replaces this with the graph-traversal ef_search beam.
+    return search(query, dim, k, params_.ef_search);
+}
+
+std::vector<Neighbor> HnswIndex::search(const float* query, std::size_t dim,
+                                        std::size_t k, std::size_t ef) const {
+    // a bad-dimension query returns empty rather than throwing, so a malformed
+    // query never aborts a hot search loop.
     if (dim != dim_ || nodes_.empty()) {
         return {};
     }
-    std::vector<DistIdx> scored;
-    scored.reserve(nodes_.size());
-    for (std::uint32_t i = 0; i < nodes_.size(); ++i) {
-        scored.emplace_back(distance(metric_, query, vector_at(i), dim_), i);
+
+    // descend the upper layers with a width-1 greedy walk to land near the query
+    // before the wide layer-0 beam, mirroring the insert-path descent.
+    std::uint32_t ep = static_cast<std::uint32_t>(entry_point_);
+    for (int lc = max_level_; lc > 0; --lc) {
+        auto w = search_layer(query, ep, 1, lc);
+        if (!w.empty()) {
+            ep = std::min_element(w.begin(), w.end())->second;
+        }
     }
-    const std::size_t kk = std::min(k, scored.size());
-    std::partial_sort(scored.begin(), scored.begin() + kk, scored.end(),
-                      [](const DistIdx& a, const DistIdx& b) {
-                          return a.first < b.first;
-                      });
+
+    // layer 0 holds every vector. widen the beam to at least k so we can always
+    // fill the result when the index has enough vectors.
+    const std::size_t beam = std::max(ef, k);
+    auto candidates = search_layer(query, ep, beam, 0);
+
+    // search_layer returns farthest-first; sort ascending so smaller (closer)
+    // comes first, then take the top k.
+    std::sort(candidates.begin(), candidates.end(),
+              [](const DistIdx& a, const DistIdx& b) {
+                  return a.first < b.first;
+              });
+    const std::size_t kk = std::min(k, candidates.size());
     std::vector<Neighbor> out;
     out.reserve(kk);
     for (std::size_t i = 0; i < kk; ++i) {
-        out.push_back({nodes_[scored[i].second].id, scored[i].first});
+        out.push_back({nodes_[candidates[i].second].id, candidates[i].first});
     }
     return out;
 }

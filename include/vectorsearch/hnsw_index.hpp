@@ -41,8 +41,14 @@ public:
     HnswIndex(std::size_t dim, Metric metric, Params params);
 
     void add(std::uint64_t id, const float* vector, std::size_t dim) override;
+    // Uses params_.ef_search as the beam width (Index interface override).
     std::vector<Neighbor> search(const float* query, std::size_t dim,
                                  std::size_t k) const override;
+    // Per-query override of the ef_search beam width, so recall/QPS can be swept
+    // without rebuilding the index. The effective beam is max(ef, k), so a small
+    // ef never truncates the result below k.
+    std::vector<Neighbor> search(const float* query, std::size_t dim,
+                                 std::size_t k, std::size_t ef) const;
     std::size_t size() const override;
 
     // Insert many vectors using num_threads worker threads. ids and vectors are
@@ -55,9 +61,15 @@ public:
     Metric metric() const { return metric_; }
     const Params& params() const { return params_; }
 
-    // Convenience overload for std::vector callers.
+    // Convenience overloads for std::vector callers. ef = 0 means "use the
+    // configured params_.ef_search default".
     void add(std::uint64_t id, const std::vector<float>& vector) {
         add(id, vector.data(), vector.size());
+    }
+    std::vector<Neighbor> search(const std::vector<float>& query, std::size_t k,
+                                 std::size_t ef = 0) const {
+        return ef == 0 ? search(query.data(), query.size(), k)
+                       : search(query.data(), query.size(), k, ef);
     }
 
     // --- introspection, used by the insert-path tests ---------------------
