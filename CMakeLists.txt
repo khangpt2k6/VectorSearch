@@ -27,6 +27,10 @@ else()
   target_compile_options(vectorsearch PRIVATE -Wall -Wextra)
 endif()
 
+# Benchmarks (manual measurement programs, not CTest gates)
+add_executable(recall_sweep benchmarks/recall_sweep.cpp)
+target_link_libraries(recall_sweep PRIVATE vectorsearch)
+
 # Tests
 enable_testing()
 

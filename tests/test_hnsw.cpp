@@ -136,6 +136,41 @@ static void search_contains_true_nearest() {
     }
 }
 
+// recall@10 against the exact flat index: for each query, the fraction of the
+// true top-10 ids that the HNSW result also returns, averaged over queries.
+// default params should clear a conservative bar on random data.
+static void recall_at_10_vs_flat() {
+    const std::size_t dim = 32;
+    const std::size_t n = 2000;
+    const std::size_t nq = 100;
+    const std::size_t k = 10;
+    HnswIndex hnsw(dim, Metric::L2);
+    FlatIndex flat(dim, Metric::L2);
+    auto data = random_data(n, dim, 4242);
+    for (std::size_t i = 0; i < n; ++i) {
+        hnsw.add(static_cast<std::uint64_t>(i), data.data() + i * dim, dim);
+        flat.add(static_cast<std::uint64_t>(i), data.data() + i * dim, dim);
+    }
+
+    auto queries = random_data(nq, dim, 13);
+    std::size_t hits_total = 0;
+    for (std::size_t qi = 0; qi < nq; ++qi) {
+        const float* q = queries.data() + qi * dim;
+        auto truth = flat.search(q, dim, k);
+        auto got = hnsw.search(q, dim, k);
+
+        std::unordered_set<std::uint64_t> truth_ids;
+        for (const Neighbor& t : truth) truth_ids.insert(t.id);
+        for (const Neighbor& g : got) {
+            if (truth_ids.count(g.id)) ++hits_total;
+        }
+    }
+
+    const double recall = static_cast<double>(hits_total) / (nq * k);
+    std::printf("test_hnsw: recall@10 = %.4f\n", recall);
+    CHECK(recall >= 0.90);
+}
+
 // a parallel build must produce the same node count and a valid graph: no self
 // loops, layer-0 degree within bounds, and no isolated nodes.
 static void parallel_build_is_valid() {
@@ -165,6 +200,7 @@ int main() {
     link_invariants_hold();
     graph_is_connected();
     search_contains_true_nearest();
+    recall_at_10_vs_flat();
     parallel_build_is_valid();
 
     if (test::failures() == 0) {
