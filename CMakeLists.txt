@@ -12,6 +12,7 @@ endif()
 # Core library
 add_library(vectorsearch
   src/flat_index.cpp
+  src/scalar_quantizer.cpp
 )
 target_include_directories(vectorsearch
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -35,3 +36,8 @@ add_executable(test_flat tests/test_flat.cpp)
 target_link_libraries(test_flat PRIVATE vectorsearch)
 target_include_directories(test_flat PRIVATE tests)
 add_test(NAME flat COMMAND test_flat)
+
+add_executable(test_scalar_quantizer tests/test_scalar_quantizer.cpp)
+target_link_libraries(test_scalar_quantizer PRIVATE vectorsearch)
+target_include_directories(test_scalar_quantizer PRIVATE tests)
+add_test(NAME scalar_quantizer COMMAND test_scalar_quantizer)
