@@ -2,45 +2,17 @@
 
 #include <cmath>
 #include <cstdint>
-#include <random>
 #include <stdexcept>
-#include <unordered_set>
 #include <vector>
 
 #include "check.hpp"
+#include "utils/add_wrong_dim.hpp"
+#include "utils/random_data.hpp"
+#include "utils/recall.hpp"
 #include "vectorsearch/distance.hpp"
 #include "vectorsearch/flat_index.hpp"
 
 using namespace vectorsearch;
-
-static std::vector<float> random_data(std::size_t count, std::size_t dim,
-                                      std::uint64_t seed) {
-    std::mt19937_64 rng(seed);
-    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-    std::vector<float> out(count * dim);
-    for (float& x : out) x = dist(rng);
-    return out;
-}
-
-// average recall@k of an approximate index against the exact flat index.
-static double recall_at_k(const ScalarQuantizedIndex& approx,
-                          const FlatIndex& truth, const std::vector<float>& q,
-                          std::size_t nq, std::size_t dim, std::size_t k) {
-    double total = 0.0;
-    for (std::size_t i = 0; i < nq; ++i) {
-        const float* query = q.data() + i * dim;
-        auto exact = truth.search(query, dim, k);
-        auto got = approx.search(query, dim, k);
-        std::unordered_set<std::uint64_t> truth_ids;
-        for (const Neighbor& n : exact) truth_ids.insert(n.id);
-        std::size_t hit = 0;
-        for (const Neighbor& n : got) {
-            if (truth_ids.count(n.id)) ++hit;
-        }
-        total += static_cast<double>(hit) / static_cast<double>(k);
-    }
-    return total / static_cast<double>(nq);
-}
 
 static void add_before_train_throws() {
     ScalarQuantizedIndex idx(4, Metric::L2);
@@ -53,22 +25,10 @@ static void add_before_train_throws() {
     CHECK(threw);
 }
 
-static void add_rejects_wrong_dimension() {
-    ScalarQuantizedIndex idx(3, Metric::L2);
-    idx.train(random_data(20, 3, 1));
-    bool threw = false;
-    try {
-        idx.add(1, std::vector<float>{0.0f, 0.0f});
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    CHECK(threw);
-}
-
 static void grows_and_searches_sorted() {
     const std::size_t dim = 8;
     ScalarQuantizedIndex idx(dim, Metric::L2);
-    auto data = random_data(100, dim, 7);
+    auto data = test::random_data(100, dim, 7);
     idx.train(data);
     for (std::size_t i = 0; i < 100; ++i) {
         idx.add(static_cast<std::uint64_t>(i), data.data() + i * dim, dim);
@@ -89,7 +49,7 @@ static void codes_only_cuts_memory() {
     ScalarQuantizedIndex::Options opt;
     opt.rerank = false;  // codes only, no kept originals
     ScalarQuantizedIndex idx(dim, Metric::L2, opt);
-    auto data = random_data(n, dim, 3);
+    auto data = test::random_data(n, dim, 3);
     idx.train(data);
     for (std::size_t i = 0; i < n; ++i) {
         idx.add(static_cast<std::uint64_t>(i), data.data() + i * dim, dim);
@@ -108,8 +68,8 @@ static void rerank_recovers_recall() {
     const std::size_t n = 1000;
     const std::size_t nq = 100;
     const std::size_t k = 10;
-    auto data = random_data(n, dim, 2024);
-    auto queries = random_data(nq, dim, 99);
+    auto data = test::random_data(n, dim, 2024);
+    auto queries = test::random_data(nq, dim, 99);
 
     FlatIndex truth(dim, Metric::L2);
     ScalarQuantizedIndex::Options codes_opt;
@@ -126,8 +86,10 @@ static void rerank_recovers_recall() {
         reranked.add(static_cast<std::uint64_t>(i), v, dim);
     }
 
-    const double r_codes = recall_at_k(codes_only, truth, queries, nq, dim, k);
-    const double r_rerank = recall_at_k(reranked, truth, queries, nq, dim, k);
+    const double r_codes =
+        test::recall_at_k(codes_only, truth, queries.data(), nq, dim, k);
+    const double r_rerank =
+        test::recall_at_k(reranked, truth, queries.data(), nq, dim, k);
     std::printf("  recall@%zu  codes-only: %.3f   re-ranked: %.3f\n", k, r_codes,
                 r_rerank);
 
@@ -146,7 +108,11 @@ static void rerank_recovers_recall() {
 
 int main() {
     add_before_train_throws();
-    add_rejects_wrong_dimension();
+    {
+        ScalarQuantizedIndex idx(3, Metric::L2);
+        idx.train(test::random_data(20, 3, 1));
+        test::check_add_rejects_wrong_dimension(idx);
+    }
     grows_and_searches_sorted();
     codes_only_cuts_memory();
     rerank_recovers_recall();

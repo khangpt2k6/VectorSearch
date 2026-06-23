@@ -1,26 +1,13 @@
 #include "vectorsearch/flat_index.hpp"
 
 #include <cstdint>
-#include <stdexcept>
 #include <vector>
 
 #include "check.hpp"
+#include "utils/add_wrong_dim.hpp"
 #include "vectorsearch/distance.hpp"
 
 using namespace vectorsearch;
-
-static void add_rejects_wrong_dimension() {
-    FlatIndex idx(3, Metric::L2);
-    bool threw = false;
-    try {
-        std::vector<float> bad = {0.0f, 0.0f};
-        idx.add(1, bad);
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    CHECK(threw);
-    CHECK(idx.empty());
-}
 
 static void search_returns_closest_first() {
     FlatIndex idx(3, Metric::L2);
@@ -95,7 +82,10 @@ static void stored_vector_is_its_own_nearest() {
 }
 
 int main() {
-    add_rejects_wrong_dimension();
+    {
+        FlatIndex idx(3, Metric::L2);
+        test::check_add_rejects_wrong_dimension(idx);
+    }
     search_returns_closest_first();
     search_caps_at_index_size();
     search_empty_and_bad_dim();

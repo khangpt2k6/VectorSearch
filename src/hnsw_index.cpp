@@ -133,6 +133,17 @@ std::vector<DistIdx> HnswIndex::search_layer(const float* query,
     return out;
 }
 
+std::uint32_t HnswIndex::greedy_descend(const float* query, std::uint32_t ep,
+                                        int from_layer, int to_layer) const {
+    for (int lc = from_layer; lc > to_layer; --lc) {
+        auto w = search_layer(query, ep, 1, lc);
+        if (!w.empty()) {
+            ep = std::min_element(w.begin(), w.end())->second;
+        }
+    }
+    return ep;
+}
+
 std::vector<std::uint32_t> HnswIndex::select_neighbors(
     std::vector<DistIdx> candidates, std::size_t m) const {
     std::sort(candidates.begin(), candidates.end(),
@@ -163,6 +174,18 @@ std::vector<std::uint32_t> HnswIndex::select_neighbors(
     return picked;
 }
 
+std::uint32_t HnswIndex::append_node(std::uint64_t id, const float* vector) {
+    const auto idx = static_cast<std::uint32_t>(nodes_.size());
+    const int level = random_level();
+    data_.insert(data_.end(), vector, vector + dim_);
+    Node node;
+    node.id = id;
+    node.level = level;
+    node.links.resize(static_cast<std::size_t>(level) + 1);
+    nodes_.push_back(std::move(node));
+    return idx;
+}
+
 void HnswIndex::link_node(std::uint32_t new_idx) {
     const std::uint32_t entry = static_cast<std::uint32_t>(entry_point_);
     if (entry == new_idx) {
@@ -172,15 +195,7 @@ void HnswIndex::link_node(std::uint32_t new_idx) {
     const int node_top = nodes_[new_idx].level;
     const float* q = vector_at(new_idx);
 
-    std::uint32_t ep = entry;
-    // descend the layers above the new node with a width-1 greedy walk to find
-    // the best entry point for the layers we actually join.
-    for (int lc = top; lc > node_top; --lc) {
-        auto w = search_layer(q, ep, 1, lc);
-        if (!w.empty()) {
-            ep = std::min_element(w.begin(), w.end())->second;
-        }
-    }
+    std::uint32_t ep = greedy_descend(q, entry, top, node_top);
 
     for (int lc = std::min(top, node_top); lc >= 0; --lc) {
         auto candidates = search_layer(q, ep, params_.ef_construction, lc);
@@ -202,15 +217,8 @@ void HnswIndex::add(std::uint64_t id, const float* vector, std::size_t dim) {
     if (dim != dim_) {
         throw std::invalid_argument("HnswIndex::add dimension mismatch");
     }
-    const auto new_idx = static_cast<std::uint32_t>(nodes_.size());
-    const int level = random_level();
-
-    data_.insert(data_.end(), vector, vector + dim_);
-    Node node;
-    node.id = id;
-    node.level = level;
-    node.links.resize(static_cast<std::size_t>(level) + 1);
-    nodes_.push_back(std::move(node));
+    const auto new_idx = append_node(id, vector);
+    const int level = nodes_[new_idx].level;
 
     if (entry_point_ == kNoEntry) {
         entry_point_ = new_idx;
@@ -234,14 +242,8 @@ void HnswIndex::add_parallel(const std::uint64_t* ids, const float* vectors,
     // point to the highest-level node. linking happens in phase 2.
     const std::uint32_t base = static_cast<std::uint32_t>(nodes_.size());
     for (std::size_t i = 0; i < count; ++i) {
-        const auto idx = static_cast<std::uint32_t>(nodes_.size());
-        const int level = random_level();
-        data_.insert(data_.end(), vectors + i * dim_, vectors + (i + 1) * dim_);
-        Node node;
-        node.id = ids[i];
-        node.level = level;
-        node.links.resize(static_cast<std::size_t>(level) + 1);
-        nodes_.push_back(std::move(node));
+        const auto idx = append_node(ids[i], vectors + i * dim_);
+        const int level = nodes_[idx].level;
         if (entry_point_ == kNoEntry || level > max_level_) {
             max_level_ = level;
             entry_point_ = idx;
@@ -296,15 +298,9 @@ std::vector<Neighbor> HnswIndex::search(const float* query, std::size_t dim,
         return {};
     }
 
-    // descend the upper layers with a width-1 greedy walk to land near the query
-    // before the wide layer-0 beam, mirroring the insert-path descent.
-    std::uint32_t ep = static_cast<std::uint32_t>(entry_point_);
-    for (int lc = max_level_; lc > 0; --lc) {
-        auto w = search_layer(query, ep, 1, lc);
-        if (!w.empty()) {
-            ep = std::min_element(w.begin(), w.end())->second;
-        }
-    }
+    std::uint32_t ep =
+        greedy_descend(query, static_cast<std::uint32_t>(entry_point_),
+                       max_level_, 0);
 
     // layer 0 holds every vector. widen the beam to at least k so we can always
     // fill the result when the index has enough vectors.

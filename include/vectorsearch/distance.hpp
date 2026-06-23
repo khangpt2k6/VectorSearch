@@ -2,11 +2,8 @@
 
 // Distance metrics.
 //
-// Every metric is expressed so that a smaller value means "closer". That lets
-// the rest of the engine sort results ascending no matter which metric is in
-// use. For L2 we return the squared distance (the square root is monotonic and
-// would only waste cycles for ranking). For cosine we return 1 - similarity.
-// For dot product we return -dot, since a larger dot product means more similar.
+// All metrics are defined so lower values mean closer, allowing the 
+// engine to always sort results in ascending order regardless of the metric.
 
 #include <cmath>
 #include <cstddef>
@@ -38,18 +35,12 @@ inline float dot(const float* a, const float* b, std::size_t dim) {
     return sum;
 }
 
-// Cosine distance, 1 - similarity. Returns 1.0 when either vector has zero
-// magnitude, since the angle is undefined.
+// Cosine distance, 1 - similarity. 
+// Returns 1.0 when the two vectors are perpendicular.
 inline float cosine_distance(const float* a, const float* b, std::size_t dim) {
-    float dot_ab = 0.0f;
-    float norm_a = 0.0f;
-    float norm_b = 0.0f;
-    for (std::size_t i = 0; i < dim; ++i) {
-        dot_ab += a[i] * b[i];
-        norm_a += a[i] * a[i];
-        norm_b += b[i] * b[i];
-    }
-    const float denom = std::sqrt(norm_a) * std::sqrt(norm_b);
+    const float dot_ab = dot(a, b, dim);
+    const float denom =
+        std::sqrt(dot(a, a, dim)) * std::sqrt(dot(b, b, dim));
     if (denom == 0.0f) {
         return 1.0f;
     }

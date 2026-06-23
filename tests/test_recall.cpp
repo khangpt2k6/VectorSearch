@@ -2,25 +2,15 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <random>
-#include <unordered_set>
 #include <vector>
 
 #include "check.hpp"
+#include "utils/random_data.hpp"
+#include "utils/recall.hpp"
 #include "vectorsearch/distance.hpp"
 #include "vectorsearch/flat_index.hpp"
 
 using namespace vectorsearch;
-
-// deterministic random vectors, same helper the other hnsw tests use.
-static std::vector<float> random_data(std::size_t count, std::size_t dim,
-                                      std::uint64_t seed) {
-    std::mt19937_64 rng(seed);
-    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-    std::vector<float> out(count * dim);
-    for (float& x : out) x = dist(rng);
-    return out;
-}
 
 // average recall@k of the hnsw index against the exact flat index over many
 // queries. recall here = fraction of the true top-k that hnsw also returns.
@@ -29,28 +19,14 @@ static double measure_recall(Metric metric, std::size_t dim, std::size_t n,
                              const HnswIndex::Params& p) {
     HnswIndex hnsw(dim, metric, p);
     FlatIndex flat(dim, metric);
-    auto data = random_data(n, dim, 2025);
+    auto data = test::random_data(n, dim, 2025);
     for (std::size_t i = 0; i < n; ++i) {
         hnsw.add(static_cast<std::uint64_t>(i), data.data() + i * dim, dim);
         flat.add(static_cast<std::uint64_t>(i), data.data() + i * dim, dim);
     }
 
-    auto queries = random_data(num_queries, dim, 31337);
-    std::size_t hit = 0;
-    std::size_t total = 0;
-    for (std::size_t qi = 0; qi < num_queries; ++qi) {
-        const float* q = queries.data() + qi * dim;
-        auto truth = flat.search(q, dim, k);
-        auto hits = hnsw.search(q, dim, k);
-
-        std::unordered_set<std::uint64_t> got;
-        for (const Neighbor& h : hits) got.insert(h.id);
-        for (const Neighbor& t : truth) {
-            if (got.count(t.id)) ++hit;
-            ++total;
-        }
-    }
-    return total == 0 ? 0.0 : static_cast<double>(hit) / total;
+    auto queries = test::random_data(num_queries, dim, 31337);
+    return test::recall_at_k(hnsw, flat, queries.data(), num_queries, dim, k);
 }
 
 // with default params the approximate graph should recover almost all of the

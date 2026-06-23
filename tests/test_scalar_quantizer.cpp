@@ -2,26 +2,17 @@
 
 #include <cmath>
 #include <cstdint>
-#include <random>
 #include <vector>
 
 #include "check.hpp"
+#include "utils/random_data.hpp"
 
 using namespace vectorsearch;
-
-static std::vector<float> random_data(std::size_t count, std::size_t dim,
-                                      std::uint64_t seed) {
-    std::mt19937_64 rng(seed);
-    std::uniform_real_distribution<float> dist(-3.0f, 5.0f);
-    std::vector<float> out(count * dim);
-    for (float& x : out) x = dist(rng);
-    return out;
-}
 
 static void train_records_dim() {
     ScalarQuantizer q;
     CHECK(!q.trained());
-    auto data = random_data(50, 8, 1);
+    auto data = test::random_data(50, 8, 1);
     q.train(data, 8);
     CHECK(q.trained());
     CHECK(q.dim() == 8);
@@ -32,7 +23,7 @@ static void roundtrip_within_half_step() {
     const std::size_t dim = 16;
     const std::size_t n = 200;
     ScalarQuantizer q;
-    auto data = random_data(n, dim, 42);
+    auto data = test::random_data(n, dim, 42);
     q.train(data, dim);
 
     for (std::size_t i = 0; i < n; ++i) {

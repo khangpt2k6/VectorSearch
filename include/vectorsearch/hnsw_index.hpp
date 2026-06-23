@@ -111,6 +111,11 @@ private:
         const float* query, std::uint32_t entry, std::size_t ef,
         int layer) const;
 
+    // width-1 greedy walk from from_layer down to (but not including) to_layer.
+    // shared by insert (descend above the new node) and query (upper layers).
+    std::uint32_t greedy_descend(const float* query, std::uint32_t ep,
+                                 int from_layer, int to_layer) const;
+
     // pick at most m neighbors out of candidates using the HNSW heuristic: keep
     // a candidate only if it is closer to the new node than to anything already
     // kept, which spreads links out instead of clustering them. candidates carry
@@ -118,6 +123,9 @@ private:
     std::vector<std::uint32_t> select_neighbors(
         std::vector<std::pair<float, std::uint32_t>> candidates,
         std::size_t m) const;
+
+    // store one vector and graph node; returns the new internal index.
+    std::uint32_t append_node(std::uint64_t id, const float* vector);
 
     // wire one node (already stored in nodes_/data_) into the graph.
     void link_node(std::uint32_t new_idx);
