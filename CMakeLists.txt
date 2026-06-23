@@ -13,6 +13,8 @@ endif()
 add_library(vectorsearch
   src/flat_index.cpp
   src/hnsw_index.cpp
+  src/scalar_quantizer.cpp
+  src/scalar_quantized_index.cpp
 )
 target_include_directories(vectorsearch
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -53,3 +55,13 @@ add_executable(test_recall tests/test_recall.cpp)
 target_link_libraries(test_recall PRIVATE vectorsearch)
 target_include_directories(test_recall PRIVATE tests)
 add_test(NAME recall COMMAND test_recall)
+
+add_executable(test_scalar_quantizer tests/test_scalar_quantizer.cpp)
+target_link_libraries(test_scalar_quantizer PRIVATE vectorsearch)
+target_include_directories(test_scalar_quantizer PRIVATE tests)
+add_test(NAME scalar_quantizer COMMAND test_scalar_quantizer)
+
+add_executable(test_scalar_quantized_index tests/test_scalar_quantized_index.cpp)
+target_link_libraries(test_scalar_quantized_index PRIVATE vectorsearch)
+target_include_directories(test_scalar_quantized_index PRIVATE tests)
+add_test(NAME scalar_quantized_index COMMAND test_scalar_quantized_index)

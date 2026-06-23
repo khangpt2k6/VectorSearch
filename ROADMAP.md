@@ -28,7 +28,7 @@ working, testable state. Check items off as they land.
 
 ## Phase 3 - Compression / quantization
 
-- [ ] Scalar quantization (f32 -> int8) with a re-rank pass
+- [x] Scalar quantization (f32 -> int8) with a re-rank pass
 - [ ] Product quantization (PQ) for big memory savings
 - [ ] Measure the recall vs memory trade-off
 
