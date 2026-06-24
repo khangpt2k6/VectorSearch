@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant C as Client
+    participant A as Drogon API
+    participant M as Collection Manager
+    participant H as HNSW index
+    participant S as SQ re-rank
+    participant F as Payload filter
+
+    C->>A: POST /collections/{c}/points/search
+    A->>M: lookup collection (read lock)
+    M->>H: search(query, k x over-fetch)
+    H-->>M: candidate ids
+    M->>S: re-rank with exact distances
+    S-->>M: refined top-k
+    M->>F: apply payload filter (must / should)
+    F-->>M: filtered hits
+    M-->>A: results + payloads
+    A-->>C: 200 JSON

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VectorSearch - Design Document</title>
+<style>
+  :root { --ink:#1f2330; --muted:#5b6172; --line:#e2e4ee; --accent:#5b54d6; --bg:#f6f7fb; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); margin: 0; line-height: 1.55; font-size: 13px;
+  }
+  .page { padding: 48px 56px; }
+  header.cover {
+    padding: 120px 56px 0; height: 100vh; page-break-after: always;
+    background: linear-gradient(160deg,#5b54d6 0%,#7d3bd6 100%); color:#fff;
+  }
+  header.cover h1 { font-size: 52px; margin: 0 0 8px; letter-spacing:-1px; }
+  header.cover .tag { font-size: 19px; opacity: .9; font-weight: 400; }
+  header.cover .meta { margin-top: 40px; font-size: 14px; opacity:.85; }
+  header.cover .chips { margin-top: 28px; }
+  header.cover .chip {
+    display:inline-block; border:1px solid rgba(255,255,255,.5); border-radius:20px;
+    padding:5px 14px; margin:4px 6px 0 0; font-size:12.5px;
+  }
+  h2 { font-size: 22px; margin: 36px 0 6px; color: var(--accent); letter-spacing:-.3px; }
+  h2:first-child { margin-top: 0; }
+  h3 { font-size: 15px; margin: 20px 0 4px; }
+  p { margin: 6px 0; color: var(--ink); }
+  .lead { color: var(--muted); font-size: 13.5px; }
+  .rule { height:3px; width:54px; background:var(--accent); border:none; margin:6px 0 14px; border-radius:2px; }
+  figure { margin: 16px 0 8px; text-align:center; page-break-inside: avoid; }
+  figure img { max-width: 100%; border:1px solid var(--line); border-radius:8px; }
+  figcaption { color: var(--muted); font-size: 11.5px; margin-top: 6px; }
+  table { width:100%; border-collapse: collapse; margin: 12px 0; font-size:12px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align: top; }
+  th { background: var(--bg); color: var(--muted); font-weight:600; text-transform:uppercase; font-size:10.5px; letter-spacing:.4px; }
+  code { background: var(--bg); padding:1px 5px; border-radius:4px; font-family:"Cascadia Code",Consolas,monospace; font-size:11.5px; }
+  .grid { display:flex; gap:16px; }
+  .grid > div { flex:1; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px; }
+  .grid h3 { margin:0 0 4px; color:var(--accent); }
+  .section { page-break-inside: avoid; }
+  .pb { page-break-before: always; }
+  .pill { display:inline-block; padding:1px 8px; border-radius:10px; font-size:10.5px; font-weight:600; }
+  .done { background:#e4f7ec; color:#1c7c45; }
+  .wip  { background:#fff3da; color:#9a6b12; }
+  .todo { background:#eceeffe; color:#5b54d6; background:#ecedfb; }
+  ul { margin:6px 0; padding-left: 20px; }
+  li { margin: 2px 0; }
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <h1>VectorSearch</h1>
+  <div class="tag">A vector database, built from scratch in C++</div>
+  <div class="chips">
+    <span class="chip">HNSW graph index</span>
+    <span class="chip">int8 quantization</span>
+    <span class="chip">Drogon REST API</span>
+    <span class="chip">RocksDB persistence</span>
+    <span class="chip">OpenTelemetry</span>
+    <span class="chip">Docker / Fly.io</span>
+  </div>
+  <div class="meta">Design Document &middot; single-node architecture</div>
+</header>
+
+<div class="page">
+
+  <section class="section">
+    <h2>1. Overview</h2>
+    <hr class="rule">
+    <p class="lead">VectorSearch is an approximate nearest neighbor (ANN) engine wrapped as a
+    standalone database service. It stores high-dimensional vectors with attached JSON payloads,
+    and answers "find the k most similar vectors to this query, optionally filtered by payload"
+    over an HTTP API.</p>
+    <p>The hard core - the HNSW graph index and int8 scalar quantization - is written from
+    scratch with no third-party ANN library. The surrounding database layer (API, collections,
+    payload filtering, persistence, observability) turns that engine into a deployable service,
+    in the same spirit as Qdrant or FAISS-server.</p>
+    <div class="grid">
+      <div><h3>Goal 1</h3>Fast, accurate ANN search over high-dimensional vectors.</div>
+      <div><h3>Goal 2</h3>A real benchmark proving recall and throughput against FAISS / hnswlib / Qdrant.</div>
+      <div><h3>Goal 3</h3>A clean single-node service: REST API, durable storage, metrics, one-command deploy.</div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>2. System architecture</h2>
+    <hr class="rule">
+    <p>Requests enter through the Drogon HTTP layer. The Collection Manager owns one index per
+    collection; a search runs the HNSW graph, refines the shortlist with exact distances on the
+    quantized vectors, then applies the payload filter. Writes go to a WAL and periodic snapshots;
+    payloads and metadata live in RocksDB. Every request is traced through OpenTelemetry.</p>
+    <figure>
+      <img src="architecture.png" alt="System architecture">
+      <figcaption>Figure 1 - Component architecture of the VectorSearch service.</figcaption>
+    </figure>
+  </section>
+
+  <section class="section pb">
+    <h2>3. Search request flow</h2>
+    <hr class="rule">
+    <p>A search over-fetches candidates from the graph (k times an over-fetch factor), re-ranks
+    them with exact distances so the returned order is accurate, and only then filters by payload.
+    Over-fetching before filtering keeps recall high when filters are selective.</p>
+    <figure>
+      <img src="search-flow.png" alt="Search request flow">
+      <figcaption>Figure 2 - Lifecycle of a single search request.</figcaption>
+    </figure>
+  </section>
+
+  <section class="section">
+    <h2>4. Data model</h2>
+    <hr class="rule">
+    <table>
+      <tr><th>Entity</th><th>Fields</th><th>Notes</th></tr>
+      <tr><td><code>Collection</code></td><td>name, dim, metric, index params</td><td>One HNSW index + payload store, guarded by a read/write lock.</td></tr>
+      <tr><td><code>Point</code></td><td>id (uint64), vector (f32[dim]), payload (JSON)</td><td>The unit of storage and retrieval.</td></tr>
+      <tr><td><code>Payload</code></td><td>arbitrary key/value JSON</td><td>Used for hybrid filtering during search.</td></tr>
+      <tr><td><code>Neighbor</code></td><td>id, distance, payload</td><td>A single search result, sorted closest first.</td></tr>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>5. REST API</h2>
+    <hr class="rule">
+    <table>
+      <tr><th>Method</th><th>Path</th><th>Purpose</th></tr>
+      <tr><td>PUT</td><td><code>/collections/{name}</code></td><td>Create a collection (dim, metric, params)</td></tr>
+      <tr><td>GET</td><td><code>/collections/{name}</code></td><td>Collection info + point count</td></tr>
+      <tr><td>PUT</td><td><code>/collections/{name}/points</code></td><td>Upsert points (id, vector, payload)</td></tr>
+      <tr><td>POST</td><td><code>/collections/{name}/points/search</code></td><td>k-NN search with optional payload filter</td></tr>
+      <tr><td>DELETE</td><td><code>/collections/{name}/points/{id}</code></td><td>Delete a point</td></tr>
+      <tr><td>GET</td><td><code>/healthz</code> &middot; <code>/metrics</code></td><td>Liveness probe &middot; Prometheus metrics</td></tr>
+    </table>
+    <p class="lead">The contract is published as an OpenAPI spec so a typed client SDK can be generated.</p>
+  </section>
+
+  <section class="section">
+    <h2>6. Persistence</h2>
+    <hr class="rule">
+    <p>Durability is layered so a crash never loses an acknowledged write and restart is fast:</p>
+    <ul>
+      <li><b>Write-ahead log (WAL)</b> - every upsert/delete is appended before it is acknowledged; replayed on startup to recover the tail.</li>
+      <li><b>Snapshots</b> - the index and vectors are flushed to a compact binary file periodically, truncating the WAL.</li>
+      <li><b>RocksDB</b> - payloads and collection metadata live in an embedded key/value store (the same engine Qdrant uses), so lookups and updates are durable without bespoke code.</li>
+      <li><b>mmap</b> - large vector snapshots are memory-mapped so an index bigger than RAM still loads.</li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <h2>7. Build status &amp; roadmap</h2>
+    <hr class="rule">
+    <figure>
+      <img src="module-map.png" alt="Module status map">
+      <figcaption>Figure 3 - What exists today versus the database layer still to build.</figcaption>
+    </figure>
+    <table>
+      <tr><th>Milestone</th><th>Scope</th><th>Status</th></tr>
+      <tr><td>Engine</td><td>distance metrics, FlatIndex, HNSW insert + query, recall test, CI</td><td><span class="pill done">done</span></td></tr>
+      <tr><td>Quantization</td><td>scalar int8 codec + exact re-rank pass</td><td><span class="pill wip">in review</span></td></tr>
+      <tr><td>M1</td><td>Drogon service skeleton + <code>/healthz</code></td><td><span class="pill todo">to build</span></td></tr>
+      <tr><td>M2</td><td>collections + points + payload, core REST API</td><td><span class="pill todo">to build</span></td></tr>
+      <tr><td>M3</td><td>payload filtering (hybrid search)</td><td><span class="pill todo">to build</span></td></tr>
+      <tr><td>M4</td><td>persistence: RocksDB + WAL + snapshot recovery</td><td><span class="pill todo">to build</span></td></tr>
+      <tr><td>M5</td><td>concurrency: per-collection RW locks</td><td><span class="pill todo">to build</span></td></tr>
+      <tr><td>M6</td><td>observability + Docker + Fly.io deploy</td><td><span class="pill todo">to build</span></td></tr>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>8. Tech stack</h2>
+    <hr class="rule">
+    <table>
+      <tr><th>Layer</th><th>Choice</th><th>Why</th></tr>
+      <tr><td>Engine</td><td>C++17, from scratch</td><td>full control over the data structures and performance</td></tr>
+      <tr><td>HTTP</td><td>Drogon (async C++)</td><td>fast, modern, one language with the engine</td></tr>
+      <tr><td>Storage</td><td>RocksDB</td><td>battle-tested embedded KV, what real databases build on</td></tr>
+      <tr><td>Observability</td><td>OpenTelemetry + Prometheus + Grafana</td><td>standard, vendor-neutral telemetry</td></tr>
+      <tr><td>Delivery</td><td>Docker + Fly.io</td><td>reproducible build, one-command edge deploy</td></tr>
+      <tr><td>Contract</td><td>OpenAPI (REST)</td><td>generated clients, clear API surface</td></tr>
+    </table>
+  </section>
+
+</div>
+</body>
+</html>

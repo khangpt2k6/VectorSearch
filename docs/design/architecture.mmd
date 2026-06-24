@@ -1,0 +1,40 @@
+flowchart TB
+    curl["Client<br/>curl / SDK"]
+
+    subgraph api["HTTP layer (Drogon)"]
+      rest["REST controllers<br/>collections · points · search"]
+      ops["ops endpoints<br/>/healthz · /metrics"]
+    end
+
+    subgraph core["Core engine"]
+      cm["Collection Manager"]
+      subgraph coll["Collection"]
+        idx["HNSW index<br/>graph search"]
+        sq["Scalar Quantizer<br/>int8 + re-rank"]
+        pay["Payload store"]
+        lock["RW lock"]
+      end
+    end
+
+    subgraph store["Persistence"]
+      wal[("WAL")]
+      snap[("Snapshot / mmap")]
+      rocks[("RocksDB<br/>payload + metadata")]
+    end
+
+    subgraph obs["Observability"]
+      otel["OpenTelemetry"]
+      prom["Prometheus"]
+      graf["Grafana"]
+    end
+
+    curl --> rest
+    curl --> ops
+    rest --> cm
+    cm --> coll
+    idx --> sq
+    coll --> wal
+    coll --> snap
+    pay --> rocks
+    rest --> otel
+    otel --> prom --> graf

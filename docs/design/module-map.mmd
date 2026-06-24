@@ -1,0 +1,22 @@
+flowchart LR
+    subgraph done["Done — on main"]
+      d1["distance metrics"]
+      d2["FlatIndex<br/>exact baseline"]
+      d3["HNSW<br/>insert + query"]
+      d4["recall@10 test + CI"]
+    end
+
+    subgraph review["In review — PR #4"]
+      p1["Scalar quantization<br/>int8 + re-rank"]
+    end
+
+    subgraph todo["To build — vector DB"]
+      t1["REST API (Drogon)"]
+      t2["Collections + points<br/>+ payload"]
+      t3["Payload filtering"]
+      t4["Persistence<br/>RocksDB + WAL"]
+      t5["Concurrency<br/>RW locks"]
+      t6["Observability<br/>Docker + deploy"]
+    end
+
+    done --> review --> todo
